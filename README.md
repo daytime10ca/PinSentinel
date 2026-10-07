@@ -3,8 +3,6 @@
 Per-pin 12V-2x6 power monitoring, imbalance warning and safety shutdown for the
 ASUS ROG Astral GeForce RTX 5090.
 
-Status: research / planning. No code yet.
-
 ## Why
 
 The RTX 5090 pulls up to 575 W (more on the Astral OC with a raised power limit)
@@ -84,18 +82,22 @@ building for what it does not cover, listed below.
    disk before shutdown, plus Windows Event Log entries. Useful for diagnosing
    a cable and for an RMA.
 
-## Proposed thresholds (starting points, to be tuned on real data)
+## Default thresholds
 
 | Condition | Warn | Throttle | Shutdown |
 |---|---|---|---|
 | Any pin current | >= 9.0 A for 10 s | >= 9.5 A for 10 s | >= 13 A for 3 s, or >= 16 A for 1 s |
-| Pin deviation from mean (total > 15 A) | > 20 % for 30 s | > 35 % for 15 s | > 50 % for 15 s after throttle |
-| Pin < 0.5 A while total > 15 A | 5 s | 15 s | 30 s after throttle |
-| Pin voltage spread under load | > 150 mV | > 250 mV | n/a |
-| Sensor unreadable under load | 5 polls | n/a | n/a |
+| Pin deviation from mean (total >= 15 A) | > 20 % for 30 s | > 35 % for 15 s | > 50 % for 30 s |
+| Pin < 0.5 A while total >= 15 A | 5 s | 15 s | 45 s |
+| Pin voltage spread under load | > 150 mV for 30 s | > 250 mV for 15 s | n/a |
+| Sensor unreadable | 5 reads | n/a | n/a |
 
-All configurable. The imbalance and voltage numbers are estimates and need a
-week or two of baseline logging on this card before shutdown is armed on them.
+Independently of the table, a throttle-level fault that is still present 10 s
+after throttling, or that returns within 10 minutes of the throttle being
+released, forces a shutdown. The throttle is held for at least 2 minutes.
+
+All of this is in `appsettings.json`. The imbalance and voltage numbers are
+estimates. Log a week or two of baseline on this card before turning `DryRun` off.
 
 ## Limits of a software guard
 
@@ -115,24 +117,47 @@ re-plugs (the connector is rated for about 30 mating cycles), and a modest
 power limit. A hardware in-line monitor such as Thermal Grizzly WireView Pro II
 covers the cases software cannot.
 
-## Proposed architecture
+## Layout
 
-- .NET 8 Windows service (`PinSentinel.Service`): P/Invoke NVAPI read, rule
-  engine, responder (NVML/NVAPI power limit, `InitiateSystemShutdownEx`),
-  logging.
-- Tray app (`PinSentinel.Tray`): live per-pin bars, toasts, history, config.
-  Talks to the service over a named pipe.
-- Rule engine kept free of hardware dependencies so thresholds can be unit
-  tested against recorded and synthetic pin traces.
+- `src/PinSentinel.Core`: NVAPI sensor read, frame parser, rule engine, guard
+  state machine, CSV log. The rule engine and guard take time from the samples
+  and have no hardware dependencies, so they are unit tested with synthetic traces.
+- `src/PinSentinel.Service`: Windows service host. Notifies the logged-on
+  desktop, throttles with `nvidia-smi` (minimum power limit plus a clock lock),
+  shuts down with `shutdown.exe`, writes logs and incident records to
+  `%ProgramData%\PinSentinel`.
+- `src/PinSentinel.Cli`: `probe` and `watch` for checking the sensor by hand.
+- `tests/PinSentinel.Tests`: xUnit tests.
 
-## Roadmap
+Requires the .NET 10 SDK and the NVIDIA driver.
 
-0. Read-only probe: confirm the I2C frame on this card and compare against
-   GPU Tweak III / HWiNFO under load.
-1. Logger: service that records per-pin V/I, establish a baseline.
-2. Rule engine with tests, warnings only.
-3. Throttle and shutdown responders, with a dry-run mode.
-4. Tray UI, drift analysis, installer.
+## Usage
+
+```
+dotnet test
+dotnet run --project src/PinSentinel.Cli -- probe
+dotnet run --project src/PinSentinel.Cli -- watch --log .\logs
+dotnet run --project src/PinSentinel.Service        # guard in a console, dry run
+.\scripts\install.ps1                               # elevated: install as a service
+.\scripts\install.ps1 -Uninstall
+```
+
+The service ships with `DryRun: true`. In that mode it logs, notifies and writes
+incident records for what it would have done, but never throttles or shuts down.
+
+## Status
+
+Verified on the ROG Astral RTX 5090 OC (`1043:89E3`): sensor read without admin
+rights, parsing, CSV logging, and the dry-run warn / throttle / shutdown path.
+
+Not yet verified:
+
+- Running as a service in session 0 (I2C access and desktop notifications).
+- The real throttle (`nvidia-smi -pl` / `-lgc`, needs admin) and real shutdown.
+- Readings against GPU Tweak III or HWiNFO under load.
+- Thresholds against a baseline from this card.
+
+Next: drift analysis over the baseline logs, tray UI.
 
 ## Sources
 
