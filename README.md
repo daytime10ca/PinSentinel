@@ -126,6 +126,9 @@ covers the cases software cannot.
   desktop, throttles with `nvidia-smi` (minimum power limit plus a clock lock),
   shuts down with `shutdown.exe`, writes logs and incident records to
   `%ProgramData%\PinSentinel`.
+- `src/PinSentinel.Tray`: notification-area icon and dashboard (WPF). Reads the
+  service's status stream from the `PinSentinel.Status` named pipe and adds general
+  GPU telemetry from NVML. `--demo [fault]` runs it on synthetic data.
 - `src/PinSentinel.Cli`: `probe` and `watch` for checking the sensor by hand.
 - `tests/PinSentinel.Tests`: xUnit tests.
 
@@ -157,7 +160,13 @@ Not yet verified:
 - Readings against GPU Tweak III or HWiNFO under load.
 - Thresholds against a baseline from this card.
 
-Next: drift analysis over the baseline logs, tray UI.
+- The tray app against the installed service (only tested on demo data so far).
+
+Next: drift analysis over the baseline logs.
+
+![Dashboard on synthetic fault data](docs/dashboard-demo-fault.png)
+
+The screenshot is the demo feed with a simulated fault, not a real reading.
 
 ## Sources
 

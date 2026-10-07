@@ -3,6 +3,7 @@
     <Project Path="src/PinSentinel.Cli/PinSentinel.Cli.csproj" />
     <Project Path="src/PinSentinel.Core/PinSentinel.Core.csproj" />
     <Project Path="src/PinSentinel.Service/PinSentinel.Service.csproj" />
+    <Project Path="src/PinSentinel.Tray/PinSentinel.Tray.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/PinSentinel.Tests/PinSentinel.Tests.csproj" />

@@ -6,6 +6,7 @@ namespace PinSentinel.Service;
 public sealed class GuardWorker(
     IOptions<ServiceOptions> options,
     WindowsGuardActions actions,
+    StatusBroadcaster broadcaster,
     ILogger<GuardWorker> logger) : BackgroundService
 {
     private readonly ServiceOptions _options = options.Value;
@@ -26,6 +27,9 @@ public sealed class GuardWorker(
 
         logger.LogInformation("Monitoring {Card} ({SubSystem}), dry run {DryRun}, data in {Dir}",
             AstralSensor.SupportedCards[sensor.Gpu.SubSystemId], sensor.Gpu.SubSystemText, _options.DryRun, dataDir);
+
+        string card = AstralSensor.SupportedCards[sensor.Gpu.SubSystemId];
+        broadcaster.Start(stop);
 
         using var log = new CsvLog(Path.Combine(dataDir, "logs"), _options.LogRetentionDays);
         var engine = new RuleEngine(_options.Rules);
@@ -53,6 +57,7 @@ public sealed class GuardWorker(
                 }
 
                 guard.Process(eval, now);
+                broadcaster.Publish(StatusMessage.From(card, frame, eval, guard.IsThrottled, _options.DryRun, now));
             }
             catch (Exception ex)
             {
