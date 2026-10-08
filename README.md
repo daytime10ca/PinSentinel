@@ -162,13 +162,12 @@ Verified on the ROG Astral RTX 5090 OC (`1043:89E3`):
 - Parsing, CSV logging, the status and control pipes, and the tray app against the installed service.
 - Desktop notification from the service (test alert).
 - The warn / throttle / shutdown path in dry run.
+- The real throttle: 592 W fell to 108 W within the 20 s test and recovered to 577 W on release.
+- Baseline over 68 min of load: imbalance 4-5 %, highest pin 8.68 A at ~600 W, voltage spread 16-32 mV.
 
 Not yet verified:
 
-- The real throttle (`nvidia-smi -pl` / `-lgc`) and real shutdown. The tray menu's
-  "Run throttle test" applies the real throttle for 20 s under load and reports
-  connector power before, during and after.
-- Rule thresholds against a baseline from this card.
+- The real shutdown (`shutdown.exe /s /f`).
 - Health drift thresholds (1.0 point of share, 30 % path resistance) are starting guesses.
 
 ![Live tab on demo data](docs/dashboard-live-demo.png)
