@@ -33,6 +33,12 @@ public sealed class GuardState
 
     public bool DryRun => _dryRun;
 
+    /// <summary>Connector power from the most recent sample.</summary>
+    public double LastWatts { get => Volatile.Read(ref _lastWatts); set => Volatile.Write(ref _lastWatts, value); }
+    private double _lastWatts;
+
+    public volatile bool TestThrottleActive;
+
     public void SetDryRun(bool dryRun)
     {
         _dryRun = dryRun;

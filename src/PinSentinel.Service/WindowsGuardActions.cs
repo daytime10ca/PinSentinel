@@ -13,6 +13,8 @@ public sealed class WindowsGuardActions(IOptions<ServiceOptions> options, GuardS
     private string? _previousPowerLimit;
     private bool _throttled;
     private bool _throttleApplied;
+    private bool _testRunning;
+    private readonly Lock _hardware = new();
 
     /// <summary>Raised before throttle or shutdown so the caller can dump its sample history.</summary>
     public event Action<string>? Incident;
@@ -33,14 +35,31 @@ public sealed class WindowsGuardActions(IOptions<ServiceOptions> options, GuardS
         logger.LogError("{Prefix}Throttling GPU: {Reason}", Prefix, reason);
         ShowMessage($"{Prefix}GPU throttled", $"GPU power has been cut because of a connector fault.\n\n{reason}");
         if (state.DryRun) return;
-        _throttleApplied = true;
+        lock (_hardware)
+        {
+            _throttleApplied = true;
+            ApplyHardwareThrottle();
+        }
+    }
 
+    /// <summary>Returns the commands that failed, empty when the throttle went on cleanly.</summary>
+    private List<string> ApplyHardwareThrottle()
+    {
+        var failed = new List<string>();
         // The clock lock does most of the work; the lowest power limit on a 5090 is still 400 W.
         _previousPowerLimit ??= NvidiaSmi("--query-gpu=power.limit --format=csv,noheader,nounits")?.Trim();
         string? min = NvidiaSmi("--query-gpu=power.min_limit --format=csv,noheader,nounits")?.Trim();
-        if (double.TryParse(min, CultureInfo.InvariantCulture, out double minWatts))
-            NvidiaSmi($"-pl {minWatts.ToString(CultureInfo.InvariantCulture)}");
-        NvidiaSmi($"-lgc 0,{_options.ThrottleClockMhz}");
+        if (!double.TryParse(min, CultureInfo.InvariantCulture, out double minWatts)) failed.Add("query minimum power limit");
+        else if (NvidiaSmi($"-pl {minWatts.ToString(CultureInfo.InvariantCulture)}") is null) failed.Add($"set power limit to {minWatts:F0} W");
+        if (NvidiaSmi($"-lgc 0,{_options.ThrottleClockMhz}") is null) failed.Add($"lock GPU clock to {_options.ThrottleClockMhz} MHz");
+        return failed;
+    }
+
+    private void RemoveHardwareThrottle()
+    {
+        NvidiaSmi("-rgc");
+        if (_previousPowerLimit is { Length: > 0 } limit) NvidiaSmi($"-pl {limit}");
+        _previousPowerLimit = null;
     }
 
     public void ReleaseThrottle()
@@ -49,12 +68,77 @@ public sealed class WindowsGuardActions(IOptions<ServiceOptions> options, GuardS
         _throttled = false;
         logger.LogWarning("{Prefix}Releasing GPU throttle", Prefix);
         // Undo a real throttle even if the guard was disarmed in the meantime.
-        if (!_throttleApplied) return;
-        _throttleApplied = false;
+        lock (_hardware)
+        {
+            if (!_throttleApplied) return;
+            _throttleApplied = false;
+            // A running throttle test removes the hardware throttle itself when it ends.
+            if (!_testRunning) RemoveHardwareThrottle();
+        }
+    }
 
-        NvidiaSmi("-rgc");
-        if (_previousPowerLimit is { Length: > 0 } limit) NvidiaSmi($"-pl {limit}");
-        _previousPowerLimit = null;
+    /// <summary>
+    /// Applies the real throttle for a short time regardless of dry run, and reports how far
+    /// connector power fell. Proves the throttle works on this card before the guard is armed.
+    /// </summary>
+    public bool StartThrottleTest()
+    {
+        lock (_hardware)
+        {
+            if (_testRunning || _throttleApplied) return false;
+            _testRunning = true;
+        }
+        _ = Task.Run(RunThrottleTest);
+        return true;
+    }
+
+    private async Task RunThrottleTest()
+    {
+        const int throttleSeconds = 20, settleSeconds = 10;
+        try
+        {
+            double before = await AverageWatts(5);
+            List<string> failed;
+            lock (_hardware) failed = ApplyHardwareThrottle();
+            state.TestThrottleActive = true;
+            await Task.Delay(TimeSpan.FromSeconds(throttleSeconds - settleSeconds));
+            double during = await AverageWatts(settleSeconds);
+
+            lock (_hardware) { if (!_throttleApplied) RemoveHardwareThrottle(); }
+            state.TestThrottleActive = false;
+            await Task.Delay(TimeSpan.FromSeconds(5));
+            double after = await AverageWatts(5);
+
+            string verdict = failed.Count > 0 ? "FAILED: " + string.Join("; ", failed.Select(f => "could not " + f))
+                : before < 200 ? "INCONCLUSIVE: the GPU was not under enough load. Run it during a game or benchmark."
+                : during > before * 0.6 ? "FAILED: power did not fall enough."
+                : after < before * 0.8 ? "PARTIAL: power fell, but did not recover after release."
+                : "PASSED";
+            string result = $"{verdict}\n\nBefore: {before:F0} W\nThrottled: {during:F0} W\nAfter release: {after:F0} W";
+            logger.LogWarning("Throttle test: {Result}", result.Replace("\n\n", " ").Replace('\n', ' '));
+            ShowMessage("PinSentinel throttle test", result);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Throttle test failed");
+            lock (_hardware) { if (!_throttleApplied) RemoveHardwareThrottle(); }
+        }
+        finally
+        {
+            state.TestThrottleActive = false;
+            lock (_hardware) _testRunning = false;
+        }
+    }
+
+    private async Task<double> AverageWatts(int seconds)
+    {
+        double sum = 0;
+        for (int i = 0; i < seconds * 2; i++)
+        {
+            await Task.Delay(500);
+            sum += state.LastWatts;
+        }
+        return sum / (seconds * 2);
     }
 
     public bool Shutdown(string reason)

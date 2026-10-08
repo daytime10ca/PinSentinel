@@ -165,7 +165,9 @@ Verified on the ROG Astral RTX 5090 OC (`1043:89E3`):
 
 Not yet verified:
 
-- The real throttle (`nvidia-smi -pl` / `-lgc`) and real shutdown.
+- The real throttle (`nvidia-smi -pl` / `-lgc`) and real shutdown. The tray menu's
+  "Run throttle test" applies the real throttle for 20 s under load and reports
+  connector power before, during and after.
 - Rule thresholds against a baseline from this card.
 - Health drift thresholds (1.0 point of share, 30 % path resistance) are starting guesses.
 

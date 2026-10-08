@@ -31,6 +31,7 @@ sealed class TrayIcon : IDisposable
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Open", null, (_, _) => toggleWindow());
         menu.Items.Add("Open log folder", null, (_, _) => OpenLogs());
+        menu.Items.Add("Run throttle test (20 s)...", null, async (_, _) => await ThrottleTest());
         menu.Items.Add(startup);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => exit());
@@ -116,6 +117,20 @@ sealed class TrayIcon : IDisposable
             if (value) key.SetValue(RunValue, $"\"{Environment.ProcessPath}\"");
             else key.DeleteValue(RunValue, false);
         }
+    }
+
+    private async Task ThrottleTest()
+    {
+        var answer = Forms.MessageBox.Show(
+            "This cuts GPU power for 20 seconds, then restores it, to prove the throttle works on this card.\n\n" +
+            "Start a game or benchmark first so the GPU is under load. Expect a heavy frame-rate drop while it runs. " +
+            "The result appears in a message when it finishes.",
+            "PinSentinel throttle test", Forms.MessageBoxButtons.OKCancel, Forms.MessageBoxIcon.Warning);
+        if (answer != Forms.DialogResult.OK) return;
+
+        string? reply = await ControlClient.Send("throttle-test");
+        if (reply != "ok")
+            _icon.ShowBalloonTip(8000, "Throttle test not started", reply ?? "The PinSentinel service is not reachable.", Forms.ToolTipIcon.Warning);
     }
 
     private static void OpenLogs()

@@ -6,8 +6,9 @@ using PinSentinel.Core;
 namespace PinSentinel.Service;
 
 /// <summary>
-/// Accepts one-line commands from the tray app: arm, disarm, test.
-/// Limited to users logged on at the machine; none of the commands can cause a shutdown by itself.
+/// Accepts one-line commands from the tray app: arm, disarm, test, throttle-test.
+/// Limited to users logged on at the machine; none of the commands can cause a shutdown by itself,
+/// and the throttle test undoes itself after 20 seconds.
 /// </summary>
 public sealed class ControlServer(GuardState state, WindowsGuardActions actions, ILogger<ControlServer> logger)
 {
@@ -52,6 +53,7 @@ public sealed class ControlServer(GuardState state, WindowsGuardActions actions,
             case "arm": state.SetDryRun(false); return "ok";
             case "disarm": state.SetDryRun(true); return "ok";
             case "test": actions.ShowTestAlert(); return "ok";
+            case "throttle-test": return actions.StartThrottleTest() ? "ok" : "error: a throttle is already active";
             default: return "error: unknown command";
         }
     }
