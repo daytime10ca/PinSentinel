@@ -156,17 +156,17 @@ incident records for what it would have done, but never throttles or shuts down.
 
 ## Status
 
-Verified on the ROG Astral RTX 5090 OC (`1043:89E3`): sensor read without admin
-rights, parsing, CSV logging, and the dry-run warn / throttle / shutdown path.
+Verified on the ROG Astral RTX 5090 OC (`1043:89E3`):
+
+- Sensor read as a service in session 0, and readings against GPU Tweak III at ~550 W.
+- Parsing, CSV logging, the status and control pipes, and the tray app against the installed service.
+- Desktop notification from the service (test alert).
+- The warn / throttle / shutdown path in dry run.
 
 Not yet verified:
 
-- Running as a service in session 0 (I2C access and desktop notifications).
-- The real throttle (`nvidia-smi -pl` / `-lgc`, needs admin) and real shutdown.
-- Readings against GPU Tweak III or HWiNFO under load.
-- Thresholds against a baseline from this card.
-
-- The tray app against the installed service (only tested on demo data so far).
+- The real throttle (`nvidia-smi -pl` / `-lgc`) and real shutdown.
+- Rule thresholds against a baseline from this card.
 - Health drift thresholds (1.0 point of share, 30 % path resistance) are starting guesses.
 
 ![Live tab on demo data](docs/dashboard-live-demo.png)
