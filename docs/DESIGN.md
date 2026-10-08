@@ -139,6 +139,17 @@ The tray caches the analysis of finished days and re-reads only today's file.
 - `--demo [fault]` substitutes a synthetic feed and health history.
   `--screenshot <file> [fault] [health]` renders the dashboard to a PNG and exits.
 
+## Installer
+
+`PinSentinel.Setup` is one framework-dependent executable that requires
+elevation. The published service and tray app are embedded in it as a zip,
+produced by `scripts\build-installer.ps1`. It stops the tray app, removes any
+existing service with `sc.exe`, unpacks the files, preserves an existing
+`appsettings.json`, recreates and starts the service, writes the Start menu
+shortcut and the uninstall registry entry, and starts the tray app through
+Explorer so that it runs unelevated. A copy of itself in the install folder
+serves as the uninstaller.
+
 ## Verification record
 
 On a ROG Astral RTX 5090 OC (`1043:89E3`), October 2026.
@@ -168,5 +179,7 @@ Baseline over 68 minutes under load:
 - Thresholds for imbalance, voltage spread and health drift are reasoned
   estimates. They have not been observed against a failing connector.
 - Cards other than `1043:89E3` are recognised by ID but untested.
+- The installer's payload extraction is tested; the full install and uninstall
+  paths need administrator rights and have been run by hand only.
 - Ideas not built: per-session report, temperature and fan guard, energy cost,
   12 V rail trend, in-game overlay.

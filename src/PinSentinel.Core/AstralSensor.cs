@@ -31,6 +31,10 @@ public sealed unsafe class AstralSensor : IPinSensor
         [0x89DE1043] = "ROG Astral RTX 5080 OC",
         [0x89DF1043] = "ROG Astral RTX 5080",
         [0x8A2B1043] = "ROG Astral RTX 5080 OC White",
+        [0x8A451043] = "ROG Astral RTX 5080 OC Hatsune Miku",
+        // BTF cards are only measured when powered through the 12V-2x6 socket, not the GC-HPWR slot.
+        [0x8A5A1043] = "ROG Astral RTX 5090 BTF OC",
+        [0x8A3C1043] = "ROG Astral RTX 5090 BTF OC",
     };
 
     private const uint IdInitialize = 0x0150E828;

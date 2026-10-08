@@ -28,8 +28,11 @@ The RTX 5090 pulls up to 600 W through one connector with six +12 V pins.
 - The PSU sees a normal total load, so its over-current protection never trips.
 
 The ROG Astral has a shunt per pin and a monitoring chip that reports each pin's
-voltage and current. ASUS's own software only warns, and only while GPU Tweak III
-is running. PinSentinel uses the same sensor to act.
+voltage and current. ASUS's GPU Tweak III warns on it, and since version 2.1.8.0
+can optionally shut the PC down, but only above a fixed 12.5 A, after a delay of
+minutes, with the option off by default and GPU Tweak III running. PinSentinel
+uses the same sensor from a background service, acts on imbalance as well as
+absolute current, throttles before it shuts down, and reacts in seconds.
 
 ## Features
 
@@ -53,27 +56,36 @@ is running. PinSentinel uses the same sensor to act.
 |---|---|---|
 | ROG Astral RTX 5090 OC | `1043:89E3` | Developed and verified on this card |
 | ROG Astral RTX 5090D OC, 5090 LC, 5090 OC White, ROG Matrix 5090 | `1043:89EA`, `89EC`, `8A2E`, `8A61` | Recognised, untested |
-| ROG Astral RTX 5080, 5080 OC, 5080 OC White | `1043:89DF`, `89DE`, `8A2B` | Recognised, untested |
+| ROG Astral RTX 5090 BTF OC | `1043:8A5A`, `8A3C` | Recognised, untested. Only measured when powered through the 12V-2x6 socket |
+| ROG Astral RTX 5080, 5080 OC, 5080 OC White, 5080 OC Hatsune Miku | `1043:89DF`, `89DE`, `8A2B`, `8A45` | Recognised, untested |
 
-Other cards have no per-pin sensor and cannot be supported. Windows 10 or 11,
-the NVIDIA driver and the .NET 10 runtime are required. The acrylic dashboard
-backdrop needs Windows 11.
+ASUS is the only vendor that puts per-pin sensing on the card itself, so no
+other card can be supported. MSI (GPU Safeguard) and Corsair measure per pin
+inside the power supply instead, which this project does not read.
+
+Windows 10 or 11, the NVIDIA driver and the
+[.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) are
+required. The acrylic dashboard backdrop needs Windows 11.
 
 ## Install
 
-From an elevated PowerShell in the repository folder (needs the .NET 10 SDK):
+1. Download `PinSentinelSetup-<version>.exe` from the
+   [latest release](https://github.com/daytime10ca/PinSentinel/releases/latest).
+2. Run it and accept the administrator prompt. The installer is not code-signed,
+   so Windows SmartScreen may ask you to confirm with **More info**, **Run anyway**.
+3. In the tray icon's right-click menu, tick **Start with Windows**.
 
-```
-.\scripts\install.ps1
-```
-
-This publishes to `C:\Program Files\PinSentinel`, installs and starts the
-service, and adds a Start menu shortcut for the tray app. Start PinSentinel from
-the Start menu and tick **Start with Windows** in its right-click menu.
+The installer puts the program in `C:\Program Files\PinSentinel`, installs and
+starts the service, adds a Start menu shortcut, and starts the tray app. Running
+a newer installer upgrades in place and keeps your settings and logs.
 
 The guard starts in dry run. See the [manual](docs/MANUAL.md#arming) before arming it.
 
-To remove it: `.\scripts\install.ps1 -Uninstall`. Logs in `%ProgramData%\PinSentinel` are kept.
+To remove it, use **Settings, Apps, Installed apps**. Logs in
+`%ProgramData%\PinSentinel` are kept.
+
+To build and install from source instead, see
+[Building from source](docs/MANUAL.md#building-from-source).
 
 ## Default thresholds
 
@@ -98,7 +110,8 @@ configurable; see the [manual](docs/MANUAL.md#configuration).
 | `src/PinSentinel.Tray` | Tray icon and dashboard (WPF) |
 | `src/PinSentinel.Cli` | `probe` and `watch` for checking the sensor by hand |
 | `tests/PinSentinel.Tests` | xUnit tests for the parser, rules, guard and health analysis |
-| `scripts` | Installer and icon generator |
+| `src/PinSentinel.Setup` | The installer and uninstaller |
+| `scripts` | Installer build, install-from-source script, icon generator |
 | `docs` | Manual, design notes, screenshots |
 
 ## Development
@@ -110,6 +123,7 @@ dotnet run --project src/PinSentinel.Cli -- probe          # one raw and parsed 
 dotnet run --project src/PinSentinel.Cli -- watch          # live readings, warnings only
 dotnet run --project src/PinSentinel.Tray -- --demo        # dashboard on synthetic data
 dotnet run --project src/PinSentinel.Tray -- --demo fault  # same, with a simulated bad pin
+.\scripts\build-installer.ps1                              # dist\PinSentinelSetup-<version>.exe
 ```
 
 The rule engine and guard take time from the samples and have no hardware
@@ -129,7 +143,7 @@ limit still matter. A hardware in-line monitor covers what software cannot.
 
 ## Status
 
-Version 1.0.0. Verified on a ROG Astral RTX 5090 OC: sensor reading as a
+Version 1.1.0. Verified on a ROG Astral RTX 5090 OC: sensor reading as a
 service, readings against GPU Tweak III, desktop alerts, the real throttle
 (592 W to 108 W and back), and a 68-minute load baseline. The forced shutdown
 has only run in dry run. Details are in the [design notes](docs/DESIGN.md#verification-record).
@@ -150,7 +164,7 @@ has only run in dry run. Details are in the [design notes](docs/DESIGN.md#verifi
 
 ## License
 
-No license has been chosen yet, so all rights are reserved by default.
+[MIT](LICENSE).
 
 ## Disclaimer
 

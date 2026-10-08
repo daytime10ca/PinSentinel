@@ -16,33 +16,68 @@
 ## Install, upgrade, uninstall
 
 You need Windows 10 or 11, a supported ROG Astral card, the NVIDIA driver and the
-.NET 10 SDK.
+[.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0).
 
-Open PowerShell **as administrator** in the repository folder:
+### Install
+
+1. Download `PinSentinelSetup-<version>.exe` from the
+   [latest release](https://github.com/daytime10ca/PinSentinel/releases/latest).
+2. Run it. Windows asks for administrator permission. Because the installer is
+   not code-signed, SmartScreen may show a warning first: choose **More info**,
+   then **Run anyway**.
+3. The first dialog names the card it found, or warns if it found none. Choose **OK**.
+
+The installer then:
+
+1. Closes any running PinSentinel tray app and removes any previous service.
+2. Copies the program to `C:\Program Files\PinSentinel`.
+3. Creates the auto-start `PinSentinel` service, set to restart on failure, and starts it.
+4. Adds a Start menu shortcut and an entry in Windows' installed apps.
+5. Starts the tray app.
+
+Finally, right-click the tray icon and tick **Start with Windows**.
+
+If the .NET 10 Desktop Runtime is missing, Windows shows a prompt with a download
+link instead of starting the installer. Install the runtime and run it again.
+
+### Upgrade
+
+Run the newer installer. Your edited `appsettings.json`, the armed state and all
+logs are kept. Monitoring stops for a few seconds while it runs, so do it when
+the GPU is idle.
+
+### Uninstall
+
+Open **Settings, Apps, Installed apps**, find PinSentinel and choose
+**Uninstall**. Logs and incident files in `%ProgramData%\PinSentinel` are left in
+place; delete that folder by hand if you want them gone.
+
+### Command line
+
+| Command | Effect |
+|---|---|
+| `PinSentinelSetup.exe /quiet` | Install or upgrade without dialogs |
+| `PinSentinelSetup.exe /uninstall` | Remove |
+| `PinSentinelSetup.exe /extract <folder>` | Unpack the program files only, changing nothing else |
+
+### Building from source
+
+With the .NET 10 SDK, from the repository folder:
+
+```
+.\scripts\build-installer.ps1     # builds dist\PinSentinelSetup-<version>.exe
+```
+
+or, to publish and install straight from the working tree without building an
+installer, from an elevated PowerShell:
 
 ```
 .\scripts\install.ps1
+.\scripts\install.ps1 -Uninstall
 ```
 
-The script:
-
-1. Stops and removes any previous PinSentinel service and closes the tray app.
-2. Publishes the service to `C:\Program Files\PinSentinel` and the tray app to
-   its `Tray` subfolder.
-3. Creates the auto-start `PinSentinel` service, set to restart on failure.
-4. Adds a Start menu shortcut.
-5. Prints the service status and its first event-log entries.
-
-Then start **PinSentinel** from the Start menu and tick **Start with Windows** in
-the tray icon's right-click menu.
-
-**Upgrade** by running the same script again. Your edited `appsettings.json`, the
-armed state and all logs are kept. The service is down for a few seconds while it
-runs, so do it when the GPU is idle.
-
-**Uninstall** with `.\scripts\install.ps1 -Uninstall`. Logs and incident files in
-`%ProgramData%\PinSentinel` are left in place; delete that folder by hand if you
-want them gone.
+The script installs to the same place under the same service name, so the two
+methods can be mixed. Only the installer adds the installed-apps entry.
 
 ## The tray icon
 
@@ -273,6 +308,10 @@ ships with the driver; confirm `nvidia-smi` runs from an elevated prompt.
 **The GPU is stuck slow after a fault.**
 The throttle is released automatically when the fault clears. If the service was
 stopped while throttled, reboot, or run `nvidia-smi -rgc` from an elevated prompt.
+
+**Windows says it protected your PC when you run the installer.**
+The installer is not code-signed. Choose **More info**, then **Run anyway**. You can
+check the file against the SHA-256 published with each release.
 
 **The Start menu shortcut shows a blank icon after an upgrade.**
 Windows caches icons. Sign out and back in, or restart Explorer.

@@ -5,3 +5,5 @@ obj/
 logs/
 *.log
 publish/
+dist/
+src/PinSentinel.Setup/payload.zip
