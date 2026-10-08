@@ -9,7 +9,8 @@ namespace PinSentinel.Tray;
 static class Program
 {
     // --demo [fault]            synthetic data instead of the service
-    // --screenshot <file.png>   render the demo dashboard to a PNG and exit
+    // --show                    open the dashboard at startup
+    // --screenshot <file.png>   render the demo dashboard to a PNG and exit (add 'health' for that tab)
     [STAThread]
     static int Main(string[] args)
     {
@@ -19,9 +20,12 @@ static class Program
 
         if (shot >= 0 && shot + 1 < args.Length)
         {
-            var demo = new DemoFeed(fault);
-            for (int i = 0; i < 520; i++) model.Apply(demo.Next());
-            Render(new DashboardWindow(model) { HideWhenDeactivated = false }, args[shot + 1]);
+            var source = new DemoFeed(fault);
+            for (int i = 0; i < 520; i++) model.Apply(source.Next());
+            model.Health = DemoFeed.Health(fault);
+            var preview = new DashboardWindow(model, opaque: true) { HideWhenDeactivated = false, UseService = false };
+            preview.Select(health: args.Contains("health"));
+            Render(preview, args[shot + 1]);
             return 0;
         }
 
@@ -29,11 +33,13 @@ static class Program
         if (!first) return 0;
 
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        var window = new DashboardWindow(model);
+        bool demo = args.Contains("--demo");
+        if (demo) model.Health = DemoFeed.Health(fault);
+        var window = new DashboardWindow(model) { UseService = !demo };
         using var stop = new CancellationTokenSource();
         using var tray = new TrayIcon(model, window.Toggle, app.Shutdown);
 
-        IStatusFeed feed = args.Contains("--demo") ? new DemoFeed(fault) : new PipeFeed();
+        IStatusFeed feed = demo ? new DemoFeed(fault) : new PipeFeed();
         feed.Received += message => app.Dispatcher.BeginInvoke(() =>
         {
             if (message is null) model.Disconnected(); else model.Apply(message);
@@ -41,6 +47,7 @@ static class Program
             if (window.IsVisible) window.Refresh();
         });
         feed.Start(stop.Token);
+        if (args.Contains("--show")) app.Dispatcher.BeginInvoke(window.Toggle);
 
         int code = app.Run();
         stop.Cancel();

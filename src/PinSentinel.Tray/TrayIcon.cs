@@ -74,9 +74,9 @@ sealed class TrayIcon : IDisposable
         using var g = Drawing.Graphics.FromImage(bitmap);
         g.Clear(Drawing.Color.Transparent);
 
-        var ok = Drawing.ColorTranslator.FromHtml("#3DDC84");
-        var warn = Drawing.ColorTranslator.FromHtml("#FFB020");
-        var bad = Drawing.ColorTranslator.FromHtml("#FF4D4D");
+        var ok = Drawing.ColorTranslator.FromHtml("#5EEAD4");
+        var warn = Drawing.ColorTranslator.FromHtml("#FBBF24");
+        var bad = Drawing.ColorTranslator.FromHtml("#F87171");
         var offline = Drawing.ColorTranslator.FromHtml("#6B7280");
         var overall = severity switch { Severity.Ok => ok, Severity.Warn => warn, _ => bad };
 

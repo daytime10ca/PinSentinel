@@ -86,4 +86,20 @@ sealed class DemoFeed(bool fault) : IStatusFeed
         var frame = new PinFrame(_time, pins);
         return StatusMessage.From("ROG Astral RTX 5090 OC", frame, _engine.Evaluate(frame), false, true, _time);
     }
+
+    /// <summary>Twelve days of made-up history; with a fault, pin 2 loses share to pin 3 over the last week.</summary>
+    public static HealthReport Health(bool fault)
+    {
+        var random = new Random(12);
+        var days = new List<DayHealth>();
+        for (int d = 0; d < 12; d++)
+        {
+            double shift = fault ? Math.Max(0, d - 5) * 0.0035 : 0;
+            double[] share = [0.1593, 0.1672 - shift, 0.1682 + shift, 0.1699, 0.1685, 0.1669];
+            for (int i = 0; i < share.Length; i++) share[i] += (random.NextDouble() - 0.5) * 0.0012;
+            double?[] ohms = [.. Enumerable.Range(0, 6).Select(i => (double?)(18 + random.NextDouble() + (i == 1 ? shift * 900 : 0)))];
+            days.Add(new DayHealth(new DateOnly(2026, 10, 1).AddDays(d), 95 + random.Next(120), share, ohms, 7.9, 0.05));
+        }
+        return HealthAnalyzer.Report(days);
+    }
 }

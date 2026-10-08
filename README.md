@@ -126,9 +126,12 @@ covers the cases software cannot.
   desktop, throttles with `nvidia-smi` (minimum power limit plus a clock lock),
   shuts down with `shutdown.exe`, writes logs and incident records to
   `%ProgramData%\PinSentinel`.
-- `src/PinSentinel.Tray`: notification-area icon and dashboard (WPF). Reads the
-  service's status stream from the `PinSentinel.Status` named pipe and adds general
-  GPU telemetry from NVML. `--demo [fault]` runs it on synthetic data.
+- `src/PinSentinel.Tray`: notification-area icon and dashboard (WPF). The Live tab
+  reads the service's status stream from the `PinSentinel.Status` named pipe and adds
+  GPU telemetry from NVML. The Health tab analyses the daily CSV logs for drift in
+  each pin's share of the load and its path resistance. The footer arms or disarms
+  the guard and sends a test alert over the `PinSentinel.Control` pipe.
+  `--demo [fault]` runs it on synthetic data.
 - `src/PinSentinel.Cli`: `probe` and `watch` for checking the sensor by hand.
 - `tests/PinSentinel.Tests`: xUnit tests.
 
@@ -144,6 +147,9 @@ dotnet run --project src/PinSentinel.Service        # guard in a console, dry ru
 .\scripts\install.ps1                               # elevated: install as a service
 .\scripts\install.ps1 -Uninstall
 ```
+
+Arming from the tray is stored in `%ProgramData%\PinSentinel\state.json` and overrides
+`DryRun` in `appsettings.json`.
 
 The service ships with `DryRun: true`. In that mode it logs, notifies and writes
 incident records for what it would have done, but never throttles or shuts down.
@@ -161,12 +167,12 @@ Not yet verified:
 - Thresholds against a baseline from this card.
 
 - The tray app against the installed service (only tested on demo data so far).
+- Health drift thresholds (1.0 point of share, 30 % path resistance) are starting guesses.
 
-Next: drift analysis over the baseline logs.
+![Live tab on demo data](docs/dashboard-live-demo.png)
+![Health tab on demo data with simulated drift](docs/dashboard-health-demo.png)
 
-![Dashboard on synthetic fault data](docs/dashboard-demo-fault.png)
-
-The screenshot is the demo feed with a simulated fault, not a real reading.
+Both screenshots are the demo feed, not real readings.
 
 ## Sources
 

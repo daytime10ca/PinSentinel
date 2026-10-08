@@ -7,16 +7,17 @@ using PinSentinel.Core;
 namespace PinSentinel.Service;
 
 /// <summary>Carries out guard decisions on Windows: message box, nvidia-smi, shutdown.exe.</summary>
-public sealed class WindowsGuardActions(IOptions<ServiceOptions> options, ILogger<WindowsGuardActions> logger) : IGuardActions
+public sealed class WindowsGuardActions(IOptions<ServiceOptions> options, GuardState state, ILogger<WindowsGuardActions> logger) : IGuardActions
 {
     private readonly ServiceOptions _options = options.Value;
     private string? _previousPowerLimit;
     private bool _throttled;
+    private bool _throttleApplied;
 
     /// <summary>Raised before throttle or shutdown so the caller can dump its sample history.</summary>
     public event Action<string>? Incident;
 
-    private string Prefix => _options.DryRun ? "[dry run] " : "";
+    private string Prefix => state.DryRun ? "[dry run] " : "";
 
     public void Notify(Severity severity, string message)
     {
@@ -31,7 +32,8 @@ public sealed class WindowsGuardActions(IOptions<ServiceOptions> options, ILogge
         Incident?.Invoke($"throttle: {reason}");
         logger.LogError("{Prefix}Throttling GPU: {Reason}", Prefix, reason);
         ShowMessage($"{Prefix}GPU throttled", $"GPU power has been cut because of a connector fault.\n\n{reason}");
-        if (_options.DryRun) return;
+        if (state.DryRun) return;
+        _throttleApplied = true;
 
         // The clock lock does most of the work; the lowest power limit on a 5090 is still 400 W.
         _previousPowerLimit ??= NvidiaSmi("--query-gpu=power.limit --format=csv,noheader,nounits")?.Trim();
@@ -46,7 +48,9 @@ public sealed class WindowsGuardActions(IOptions<ServiceOptions> options, ILogge
         if (!_throttled) return;
         _throttled = false;
         logger.LogWarning("{Prefix}Releasing GPU throttle", Prefix);
-        if (_options.DryRun) return;
+        // Undo a real throttle even if the guard was disarmed in the meantime.
+        if (!_throttleApplied) return;
+        _throttleApplied = false;
 
         NvidiaSmi("-rgc");
         if (_previousPowerLimit is { Length: > 0 } limit) NvidiaSmi($"-pl {limit}");
@@ -57,7 +61,7 @@ public sealed class WindowsGuardActions(IOptions<ServiceOptions> options, ILogge
     {
         Incident?.Invoke($"shutdown: {reason}");
         logger.LogCritical("{Prefix}Shutting down: {Reason}", Prefix, reason);
-        if (_options.DryRun)
+        if (state.DryRun)
         {
             ShowMessage("[dry run] GPU power connector: shutdown", $"PinSentinel would have shut the PC down.\n\n{reason}");
             return false;
@@ -67,6 +71,13 @@ public sealed class WindowsGuardActions(IOptions<ServiceOptions> options, ILogge
         if (comment.Length > 500) comment = comment[..500];
         Run("shutdown.exe", $"/s /f /t {_options.ShutdownDelaySeconds} /c \"{comment.Replace('"', '\'')}\"");
         return true;
+    }
+
+    /// <summary>Exercises the same notification path a real warning uses.</summary>
+    public void ShowTestAlert()
+    {
+        logger.LogInformation("Test alert requested");
+        ShowMessage("PinSentinel test alert", "This is a test. No fault was detected.\n\nA real connector warning will appear like this.");
     }
 
     private string? NvidiaSmi(string arguments) => Run("nvidia-smi.exe", arguments);

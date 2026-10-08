@@ -14,6 +14,7 @@ sealed class DashboardModel
 
     public Queue<double[]> History { get; } = new();
     public GpuStats? Gpu { get; private set; }
+    public HealthReport? Health { get; set; }
 
     public double TotalAmps { get; private set; }
     public double MeanAmps => TotalAmps / PinFrame.PinCount;

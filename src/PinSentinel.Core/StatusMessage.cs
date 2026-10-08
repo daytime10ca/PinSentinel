@@ -7,6 +7,7 @@ namespace PinSentinel.Core;
 public sealed record StatusMessage
 {
     public const string PipeName = "PinSentinel.Status";
+    public const string ControlPipeName = "PinSentinel.Control";
 
     public DateTimeOffset Time { get; init; }
     public string Card { get; init; } = "";
