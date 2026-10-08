@@ -1,7 +1,10 @@
+using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using PinSentinel.Core;
 
 namespace PinSentinel.Tray;
@@ -29,30 +32,62 @@ static class Program
             return 0;
         }
 
-        using var mutex = new Mutex(true, "PinSentinel.Tray", out bool first);
+        bool demo = args.Contains("--demo");
+        using var mutex = new Mutex(true, demo ? "PinSentinel.Tray.Demo" : "PinSentinel.Tray", out bool first);
         if (!first) return 0;
 
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        bool demo = args.Contains("--demo");
         if (demo) model.Health = DemoFeed.Health(fault);
-        var window = new DashboardWindow(model) { UseService = !demo };
+
+        // The dashboard only exists while it is open, so the idle tray app carries no window or render state.
+        DashboardWindow? window = null;
+        var closedAt = DateTime.MinValue;
+        void Toggle()
+        {
+            if (window is not null) { window.Close(); return; }
+            // Clicking the tray icon to dismiss the flyout deactivates it first; do not reopen on that same click.
+            if ((DateTime.UtcNow - closedAt).TotalMilliseconds < 300) return;
+
+            window = new DashboardWindow(model) { UseService = !demo };
+            window.Closed += (_, _) =>
+            {
+                window = null;
+                closedAt = DateTime.UtcNow;
+                app.Dispatcher.BeginInvoke(TrimMemory, DispatcherPriority.ApplicationIdle);
+            };
+            window.ShowNearTray();
+        }
+
         using var stop = new CancellationTokenSource();
-        using var tray = new TrayIcon(model, window.Toggle, app.Shutdown);
+        using var tray = new TrayIcon(model, Toggle, app.Shutdown);
 
         IStatusFeed feed = demo ? new DemoFeed(fault) : new PipeFeed();
         feed.Received += message => app.Dispatcher.BeginInvoke(() =>
         {
             if (message is null) model.Disconnected(); else model.Apply(message);
             tray.Update();
-            if (window.IsVisible) window.Refresh();
+            window?.Refresh();
         });
         feed.Start(stop.Token);
-        if (args.Contains("--show")) app.Dispatcher.BeginInvoke(window.Toggle);
+        if (args.Contains("--show")) app.Dispatcher.BeginInvoke(Toggle);
+        app.Dispatcher.BeginInvoke(TrimMemory, DispatcherPriority.ApplicationIdle);
 
         int code = app.Run();
         stop.Cancel();
         return code;
     }
+
+    /// <summary>Returns what the closed dashboard and startup used to the system.</summary>
+    private static void TrimMemory()
+    {
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+        SetProcessWorkingSetSize(Process.GetCurrentProcess().Handle, -1, -1);
+    }
+
+    [DllImport("kernel32.dll")]
+    private static extern bool SetProcessWorkingSetSize(IntPtr process, nint minimum, nint maximum);
 
     private static void Render(DashboardWindow window, string path)
     {

@@ -14,7 +14,7 @@ namespace PinSentinel.Tray;
 sealed class DashboardWindow : Window
 {
     private readonly DashboardModel _model;
-    private readonly AnimatedView[] _views;
+    private readonly LiveView[] _views;
     private readonly TextBlock _title = Text(14, Theme.Text, FontWeights.SemiBold);
     private readonly TextBlock _state = Text(11.5, Theme.Dim);
     private readonly Border _banner;
@@ -27,6 +27,7 @@ sealed class DashboardWindow : Window
     private readonly Border _switch, _knob;
     private readonly TextBlock _switchLabel = Text(11.5, Theme.Dim);
     private DateTime _healthLoaded = DateTime.MinValue;
+    private bool _closing;
 
     public Border Root { get; }
     public bool HideWhenDeactivated { get; set; } = true;
@@ -135,20 +136,24 @@ sealed class DashboardWindow : Window
         Content = Root;
 
         SourceInitialized += (_, _) => ApplyBackdrop();
-        Deactivated += (_, _) => { if (HideWhenDeactivated) Hide(); };
-        KeyDown += (_, e) => { if (e.Key == Key.Escape) Hide(); };
+        // The window is destroyed, not hidden, when dismissed: a hidden WPF window keeps its render resources.
+        Closing += (_, _) => _closing = true;
+        Deactivated += (_, _) => { if (HideWhenDeactivated && !_closing) Close(); };
+        KeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); };
+        SizeChanged += (_, e) => { if (IsVisible && e.PreviousSize.Height > 0) Top -= e.NewSize.Height - e.PreviousSize.Height; };
         MouseLeftButtonDown += (_, e) => { if (e.ButtonState == MouseButtonState.Pressed) DragMove(); };
         Select(health: false);
     }
 
-    public void Toggle()
+    /// <summary>Opens the flyout in the corner by the notification area, already in its final position.</summary>
+    public void ShowNearTray()
     {
-        if (IsVisible) { Hide(); return; }
         Refresh();
-        Show();
+        Root.Measure(new Size(Width, double.PositiveInfinity));
         var area = SystemParameters.WorkArea;
-        Left = area.Right - ActualWidth - 12;
-        Top = area.Bottom - ActualHeight - 12;
+        Left = area.Right - Width - 12;
+        Top = area.Bottom - Root.DesiredSize.Height - 12;
+        Show();
         Activate();
     }
 
