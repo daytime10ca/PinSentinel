@@ -17,11 +17,13 @@ public sealed record StatusMessage
     public Severity Severity { get; init; }
     public Finding[] Findings { get; init; } = [];
     public bool Throttled { get; init; }
+    /// <summary>Throttled until the user releases it, because the fault returned after an automatic release.</summary>
+    public bool ThrottleHeld { get; init; }
     public bool DryRun { get; init; }
 
     private static readonly JsonSerializerOptions s_json = new() { Converters = { new JsonStringEnumConverter() } };
 
-    public static StatusMessage From(string card, PinFrame? frame, Evaluation eval, bool throttled, bool dryRun, DateTimeOffset now) => new()
+    public static StatusMessage From(string card, PinFrame? frame, Evaluation eval, bool throttled, bool held, bool dryRun, DateTimeOffset now) => new()
     {
         Time = now,
         Card = card,
@@ -31,6 +33,7 @@ public sealed record StatusMessage
         Severity = eval.Severity,
         Findings = [.. eval.Findings],
         Throttled = throttled,
+        ThrottleHeld = held,
         DryRun = dryRun,
     };
 

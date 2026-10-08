@@ -84,7 +84,7 @@ sealed class DemoFeed(bool fault) : IStatusFeed
         }
 
         var frame = new PinFrame(_time, pins);
-        return StatusMessage.From("ROG Astral RTX 5090 OC", frame, _engine.Evaluate(frame), false, true, _time);
+        return StatusMessage.From("ROG Astral RTX 5090 OC", frame, _engine.Evaluate(frame), false, false, true, _time);
     }
 
     /// <summary>Twelve days of made-up history; with a fault, pin 2 loses share to pin 3 over the last week.</summary>

@@ -60,8 +60,13 @@ public sealed class GuardWorker(
                 }
 
                 state.LastWatts = frame?.Watts ?? 0;
+                if (state.ReleaseRequested)
+                {
+                    state.ReleaseRequested = false;
+                    guard.RequestRelease();
+                }
                 guard.Process(eval, now);
-                broadcaster.Publish(StatusMessage.From(card, frame, eval, guard.IsThrottled || state.TestThrottleActive, state.DryRun, now));
+                broadcaster.Publish(StatusMessage.From(card, frame, eval, guard.IsThrottled || state.TestThrottleActive, guard.IsHeld, state.DryRun, now));
             }
             catch (Exception ex)
             {

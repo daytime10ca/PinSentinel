@@ -19,6 +19,7 @@ sealed class DashboardWindow : Window
     private readonly TextBlock _state = Text(11.5, Theme.Dim);
     private readonly Border _banner;
     private readonly TextBlock _bannerText = Text(11.5, Theme.Text);
+    private readonly TextBlock _release = Text(11.5, Theme.Accent, FontWeights.SemiBold);
     private readonly Dictionary<string, TextBlock> _stats = [];
     private readonly StackPanel _live = new(), _health = new();
     private readonly Border _liveTab, _healthTab;
@@ -78,7 +79,18 @@ sealed class DashboardWindow : Window
         header.Children.Add(titles);
 
         _bannerText.TextWrapping = TextWrapping.Wrap;
-        _banner = new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(12, 8, 12, 9), Margin = new Thickness(0, 0, 0, 14), Child = _bannerText };
+        _release.Text = "Release throttle";
+        _release.Cursor = Cursors.Hand;
+        _release.Margin = new Thickness(0, 6, 0, 0);
+        _release.MouseLeftButtonDown += async (_, e) =>
+        {
+            e.Handled = true;
+            _release.Text = await ControlClient.Send("release") == "ok" ? "Release requested" : "Service not reachable";
+        };
+        var bannerStack = new StackPanel();
+        bannerStack.Children.Add(_bannerText);
+        bannerStack.Children.Add(_release);
+        _banner = new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(12, 8, 12, 9), Margin = new Thickness(0, 0, 0, 14), Child = bannerStack };
 
         // Live tab.
         var side = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(26, 0, 0, 10) };
@@ -179,7 +191,8 @@ sealed class DashboardWindow : Window
 
         (string text, Color color) = !_model.Connected ? ("Waiting for the service", Theme.OfflineColor)
             : !live ? ("Sensor not readable", Theme.WarnColor)
-            : status!.Throttled ? ("GPU throttled", Theme.ThrottleColor)
+            : status!.ThrottleHeld ? ("GPU throttled until you release it", Theme.ThrottleColor)
+            : status.Throttled ? ("GPU throttled", Theme.ThrottleColor)
             : severity == Severity.Ok ? ("All pins healthy", Theme.AccentA)
             : (severity == Severity.Warn ? "Warning" : severity == Severity.Throttle ? "Fault: throttle" : "Fault: shutdown", Theme.ColorFor(severity));
         _state.Text = "●  " + text;
@@ -187,9 +200,14 @@ sealed class DashboardWindow : Window
 
         // The same condition usually trips several levels at once; show only the worst.
         var findings = live ? status!.Findings.Where(f => f.Severity == severity).Select(f => Capitalise(f.Message)).Distinct().ToList() : [];
+        bool held = live && status!.ThrottleHeld;
+        if (held && findings.Count == 0)
+            findings.Add("The fault returned after the throttle was released. GPU power stays cut until you release it. Check the power cable first.");
         _banner.Visibility = findings.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         _banner.Background = Theme.Of(color, 0.14);
         _bannerText.Text = string.Join("\n", findings);
+        _release.Visibility = held ? Visibility.Visible : Visibility.Collapsed;
+        if (!held) _release.Text = "Release throttle";
 
         Set("Imbalance", live && _model.Imbalance is { } imbalance ? $"{imbalance:P1}" : "-",
             _model.Imbalance >= 0.35 ? Theme.Critical : _model.Imbalance >= 0.20 ? Theme.Warn : null);

@@ -24,26 +24,34 @@ public sealed class GuardOptions
     /// <summary>Time without a throttle-level fault before the throttle is released.</summary>
     public TimeSpan ClearTime { get; set; } = TimeSpan.FromSeconds(60);
 
-    /// <summary>A fault that returns this soon after a release is treated as persistent.</summary>
+    /// <summary>A fault that returns this soon after a release is held throttled until the user releases it.</summary>
     public TimeSpan RetriggerWindow { get; set; } = TimeSpan.FromSeconds(600);
 }
 
 /// <summary>
-/// Decides what to do about rule findings: warn, throttle, then shut down if
-/// throttling does not clear the fault or the fault keeps coming back.
+/// Decides what to do about rule findings: warn, then throttle. A fault that comes back
+/// soon after the throttle is released is throttled again and held until the user releases it.
+/// Shutdown is kept for faults that throttling does not clear and for shutdown-level rules.
 /// </summary>
 public sealed class GuardController(GuardOptions options, IGuardActions actions)
 {
-    private enum State { Normal, Throttled, ShutdownIssued }
+    private enum State { Normal, Throttled, Held, ShutdownIssued }
 
     private State _state;
     private bool _shutdownPerformed;
+    private bool _releaseRequested;
     private DateTimeOffset _throttledAt;
     private DateTimeOffset _lastFault;
     private DateTimeOffset? _lastRelease;
     private readonly HashSet<string> _notified = [];
 
-    public bool IsThrottled => _state == State.Throttled;
+    public bool IsThrottled => _state is State.Throttled or State.Held;
+
+    /// <summary>Throttled and waiting for the user, because the fault returned after an automatic release.</summary>
+    public bool IsHeld => _state == State.Held;
+
+    /// <summary>Asks for a held throttle to be released. Honoured on the next sample, and only if the fault is absent.</summary>
+    public void RequestRelease() => _releaseRequested = true;
 
     public void Process(Evaluation eval, DateTimeOffset now)
     {
@@ -52,6 +60,8 @@ public sealed class GuardController(GuardOptions options, IGuardActions actions)
         _notified.IntersectWith(eval.Findings.Select(f => f.RuleId));
 
         string reason = string.Join("; ", eval.Findings.Where(f => f.Severity == eval.Severity).Select(f => f.Message));
+        bool releaseRequested = _releaseRequested;
+        _releaseRequested = false;
 
         switch (_state)
         {
@@ -63,18 +73,17 @@ public sealed class GuardController(GuardOptions options, IGuardActions actions)
                 }
                 else if (eval.Severity == Severity.Throttle)
                 {
-                    actions.Throttle(reason);
-                    if (_lastRelease is { } released && now - released < options.RetriggerWindow)
-                    {
-                        Shutdown($"fault returned after the throttle was released: {reason}");
-                        break;
-                    }
-                    _state = State.Throttled;
+                    bool returned = _lastRelease is { } released && now - released < options.RetriggerWindow;
+                    actions.Throttle(returned
+                        ? $"The fault returned after the throttle was released, so GPU power stays cut until you release it from the PinSentinel tray icon. Check the power cable. {reason}"
+                        : reason);
+                    _state = returned ? State.Held : State.Throttled;
                     _throttledAt = _lastFault = now;
                 }
                 break;
 
             case State.Throttled:
+            case State.Held:
                 if (eval.Severity == Severity.Shutdown)
                 {
                     Shutdown(reason);
@@ -85,7 +94,8 @@ public sealed class GuardController(GuardOptions options, IGuardActions actions)
                     if (now - _throttledAt >= options.ThrottleGrace)
                         Shutdown($"fault persists despite throttling: {reason}");
                 }
-                else if (now - _throttledAt >= options.ThrottleMinHold && now - _lastFault >= options.ClearTime)
+                else if (_state == State.Held ? releaseRequested
+                    : now - _throttledAt >= options.ThrottleMinHold && now - _lastFault >= options.ClearTime)
                 {
                     actions.ReleaseThrottle();
                     _state = State.Normal;

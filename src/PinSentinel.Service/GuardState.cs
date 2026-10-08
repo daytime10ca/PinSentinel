@@ -39,6 +39,9 @@ public sealed class GuardState
 
     public volatile bool TestThrottleActive;
 
+    /// <summary>Set by the control pipe; the guard loop picks it up on its next sample.</summary>
+    public volatile bool ReleaseRequested;
+
     public void SetDryRun(bool dryRun)
     {
         _dryRun = dryRun;

@@ -162,14 +162,17 @@ Every rule has a hold time, so a brief spike does nothing.
    locked low, which cuts connector power by about 80 %. An incident file is
    written. The throttle stays on for at least 2 minutes and until the fault has
    been absent for 1 minute, then is released.
-3. **Shutdown.** Windows shuts down after a 10-second on-screen notice, closing
+3. **Held throttle.** If the fault returns within 10 minutes of that release, the
+   GPU is throttled again and stays throttled. The dashboard shows *GPU throttled
+   until you release it* with a **Release throttle** link, which works once the
+   fault is absent. Check the cable at both ends before releasing.
+4. **Shutdown.** Windows shuts down after a 10-second on-screen notice, closing
    programs without saving. This happens when:
    - a throttle-level fault is still present 10 seconds after throttling, or
-   - a fault returns within 10 minutes of the throttle being released, or
    - a shutdown-level rule trips (13 A for 3 s, 16 A for 1 s, 50 % imbalance for
      30 s, or an open pin for 45 s).
 
-In dry run, steps 2 and 3 are announced and logged with a `[dry run]` prefix, and
+In dry run, steps 2 to 4 are announced and logged with a `[dry run]` prefix, and
 the incident file is still written, but the GPU and Windows are left alone.
 
 After a throttle or shutdown, check the cable at both ends before running the GPU
@@ -279,7 +282,7 @@ for the hold time.
 | `ThrottleGrace` | 10 s | A fault still present this long after throttling forces a shutdown. |
 | `ThrottleMinHold` | 2 min | Minimum time the throttle stays on. |
 | `ClearTime` | 1 min | Time without a fault before the throttle is released. |
-| `RetriggerWindow` | 10 min | A fault returning this soon after release forces a shutdown. |
+| `RetriggerWindow` | 10 min | A fault returning this soon after release is throttled and held until you release it. |
 
 ## Troubleshooting
 
@@ -307,7 +310,8 @@ The message names the command that failed. The throttle uses `nvidia-smi`, which
 ships with the driver; confirm `nvidia-smi` runs from an elevated prompt.
 
 **The GPU is stuck slow after a fault.**
-The throttle is released automatically when the fault clears. If the service was
+The throttle is released automatically when the fault clears, unless the dashboard
+shows it is being held, in which case use **Release throttle**. If the service was
 stopped while throttled, reboot, or run `nvidia-smi -rgc` from an elevated prompt.
 
 **Windows says it protected your PC when you run the installer.**

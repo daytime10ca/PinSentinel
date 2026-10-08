@@ -70,12 +70,62 @@ public class GuardControllerTests
         Assert.Single(_actions.Calls, c => c == "shutdown");
     }
 
-    [Fact]
-    public void FaultReturningSoonAfterReleaseShutsDown()
+    /// <summary>Throttles, lets the throttle release, then brings the fault straight back.</summary>
+    private void ReturnAfterRelease()
     {
         Run(1, Throttle);
         Run(130, Evaluation.Ok);
         Run(1, Throttle);
+    }
+
+    [Fact]
+    public void FaultReturningSoonAfterReleaseIsHeldNotShutDown()
+    {
+        ReturnAfterRelease();
+        Assert.True(_guard.IsHeld);
+        Run(3600, Evaluation.Ok);
+        Assert.True(_guard.IsThrottled);
+        Assert.DoesNotContain("shutdown", _actions.Calls);
+        Assert.Equal(1, _actions.Calls.Count(c => c == "release"));
+    }
+
+    [Fact]
+    public void HeldThrottleIsReleasedOnRequestOnceTheFaultIsGone()
+    {
+        ReturnAfterRelease();
+        Run(5, Evaluation.Ok);
+        _guard.RequestRelease();
+        Run(1, Evaluation.Ok);
+        Assert.False(_guard.IsThrottled);
+        Assert.Equal(2, _actions.Calls.Count(c => c == "release"));
+    }
+
+    [Fact]
+    public void ReleaseRequestIsIgnoredOutsideAHold()
+    {
+        Run(1, Throttle);
+        _guard.RequestRelease();
+        Run(5, Evaluation.Ok);
+        Assert.True(_guard.IsThrottled);
+        Assert.False(_guard.IsHeld);
+    }
+
+    [Fact]
+    public void HeldFaultThatSurvivesThrottlingStillShutsDown()
+    {
+        ReturnAfterRelease();
+        Run(9, Throttle);
+        Assert.DoesNotContain("shutdown", _actions.Calls);
+        _guard.RequestRelease();
+        Run(1, Throttle);
+        Assert.Single(_actions.Calls, c => c == "shutdown");
+    }
+
+    [Fact]
+    public void ShutdownSeverityWhileHeldShutsDown()
+    {
+        ReturnAfterRelease();
+        Run(1, Shutdown);
         Assert.Equal("shutdown", _actions.Calls[^1]);
     }
 

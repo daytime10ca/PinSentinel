@@ -77,8 +77,15 @@ Normal --Throttle--> Throttled --fault cleared, held >= 2 min, clear >= 1 min-->
    |                    |
    |                    +--fault still present after 10 s, or Shutdown severity--> ShutdownIssued
    +--Shutdown severity (throttle first)-----------------------------------------> ShutdownIssued
-   +--Throttle within 10 min of the last release---------------------------------> ShutdownIssued
+   +--Throttle within 10 min of the last release--> Held --user release, fault absent--> Normal
+                                                     |
+                                                     +--fault still present after 10 s, or Shutdown severity--> ShutdownIssued
 ```
+
+A returning fault used to force a shutdown. It now holds the throttle instead,
+so a pin sitting just over its 9.5 A rating at full load costs frame rate, not
+unsaved work. Shutdown is reserved for cases where throttling has not removed
+the fault or the current is far above the rating.
 
 Each finding notifies once when it becomes active. In dry run `Shutdown` returns
 false, and the controller rearms once the fault clears so that further events are
@@ -101,7 +108,7 @@ The throttle test shares the same hardware path under a lock.
 | Pipe | Direction | Access | Content |
 |---|---|---|---|
 | `PinSentinel.Status` | Service to clients | Authenticated users, read | One `StatusMessage` JSON line per sample |
-| `PinSentinel.Control` | Request and reply | Interactive users | `arm`, `disarm`, `test`, `throttle-test`; replies `ok` or `error: ...` |
+| `PinSentinel.Control` | Request and reply | Interactive users | `arm`, `disarm`, `test`, `throttle-test`, `release`; replies `ok` or `error: ...` |
 
 Publishing never blocks the guard loop. Each status client has an eight-entry
 drop-oldest queue and its own writer task, so a stalled UI only loses samples.

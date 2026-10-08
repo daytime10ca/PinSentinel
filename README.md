@@ -39,8 +39,9 @@ absolute current, throttles before it shuts down, and reacts in seconds.
 - **Background service.** Starts at boot, needs no user logged on, restarts on failure.
 - **Rules with hold times.** Per-pin over-current, load-relative imbalance, open
   pin, voltage spread between pins, and sensor loss.
-- **Graduated response.** Desktop warning, then GPU throttle, then forced shutdown
-  if the fault survives throttling or comes back. Severe faults shut down at once.
+- **Graduated response.** Desktop warning, then GPU throttle. A fault that comes
+  back is throttled and held until you release it. Shutdown is kept for faults
+  that throttling does not clear and for severe ones.
 - **Dry run.** Logs and announces what it would do without acting. This is the default.
 - **Tray dashboard.** Live per-pin levels, power gauge, five-minute graph, GPU
   temperature, load, VRAM and fan.
@@ -97,8 +98,9 @@ To build and install from source instead, see
 | Voltage spread between pins under load | > 150 mV for 30 s | > 250 mV for 15 s | n/a |
 | Sensor unreadable | 5 reads | n/a | n/a |
 
-A throttle-level fault still present 10 s after throttling, or returning within
-10 minutes of the throttle being released, also forces a shutdown. Everything is
+A throttle-level fault still present 10 s after throttling also forces a
+shutdown. One that returns within 10 minutes of the throttle being released is
+throttled again and held until you release it from the tray. Everything is
 configurable; see the [manual](docs/MANUAL.md#configuration).
 
 ## Repository layout
@@ -143,7 +145,7 @@ limit still matter. A hardware in-line monitor covers what software cannot.
 
 ## Status
 
-Version 1.1.0. Verified on a ROG Astral RTX 5090 OC: sensor reading as a
+Version 1.1.1. Verified on a ROG Astral RTX 5090 OC: sensor reading as a
 service, readings against GPU Tweak III, desktop alerts, the real throttle
 (592 W to 108 W and back), and a 68-minute load baseline. The forced shutdown
 has only run in dry run. Details are in the [design notes](docs/DESIGN.md#verification-record).

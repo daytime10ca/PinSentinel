@@ -51,7 +51,7 @@ sealed class TrayIcon : IDisposable
         double hottest = live ? status!.Amps.Max() : 0;
         int level = !live ? -1
             : severity >= Severity.Throttle || hottest >= Theme.PinLimitAmps ? 2
-            : severity == Severity.Warn || hottest >= Theme.PinWarnAmps ? 1 : 0;
+            : severity == Severity.Warn || hottest >= Theme.PinWarnAmps || status!.Throttled ? 1 : 0;
         string key = $"{level}:{string.Join(',', heights)}";
         if (key != _iconKey)
         {
