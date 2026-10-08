@@ -1,184 +1,158 @@
 # PinSentinel
 
-Per-pin 12V-2x6 power monitoring, imbalance warning and safety shutdown for the
+Per-pin power-connector monitoring, warning, throttle and safety shutdown for the
 ASUS ROG Astral GeForce RTX 5090.
+
+PinSentinel reads the current and voltage on each of the six +12 V pins of the
+card's 12V-2x6 connector twice a second. If one pin carries too much, the pins
+fall out of balance, or a pin stops carrying current, it warns you, cuts GPU
+power, and shuts the PC down if the fault does not clear.
+
+![Live tab on demo data](docs/dashboard-live-demo.png)
+
+The screenshots in this repository use the built-in demo feed, not real readings.
+
+- [User manual](docs/MANUAL.md): install, daily use, arming, configuration, troubleshooting
+- [Design notes](docs/DESIGN.md): sensor protocol, rules, state machine, verification record
 
 ## Why
 
-The RTX 5090 pulls up to 575 W (more on the Astral OC with a raised power limit)
-through a single 12V-2x6 connector with six +12 V pins.
+The RTX 5090 pulls up to 600 W through one connector with six +12 V pins.
 
-- 575 W / 12 V = ~48 A, or ~8.0 A per pin when the load is shared perfectly.
-- Each pin is rated for 9.5 A. That is ~19 % headroom at stock power.
+- 600 W at 12 V is about 50 A, or 8.3 A per pin when shared perfectly. Each pin
+  is rated for 9.5 A.
 - The card joins all six pins into one rail and does not balance them. Current
-  splits according to contact and wire resistance only, so one worn or badly
-  seated contact pushes its share onto the other pins. der8auer measured over
-  20 A on a single wire with others near 2 A, and ~150 °C at the PSU-side plug.
-- Nothing in the stock power path reacts to this. The PSU sees a normal total
-  load, so OCP never trips.
+  divides by contact and wire resistance alone, so one worn or badly seated
+  contact pushes its share onto the others. der8auer measured over 20 A on one
+  wire with others near 2 A, and about 150 °C at the PSU-side plug.
+- The PSU sees a normal total load, so its over-current protection never trips.
 
-## What the Astral gives us
+The ROG Astral has a shunt per pin and a monitoring chip that reports each pin's
+voltage and current. ASUS's own software only warns, and only while GPU Tweak III
+is running. PinSentinel uses the same sensor to act.
 
-The ROG Astral has a shunt per +12 V pin and an ITE IT8915FN monitoring chip.
-It reports voltage (mV) and current (mA) for each of the six pins.
+## Features
 
-| Item | Value |
-|---|---|
-| Target card | ROG Astral RTX 5090 OC, PCI subsystem `1043:89E3` (the card in this PC) |
-| Access | NVAPI I2C read through the NVIDIA driver (`nvapi64.dll`, I2CReadEx `0x4D7B0709`) |
-| I2C port / address / register | port `1`, 7-bit address `0x2B`, register `0x80` |
-| Frame | 24 bytes, 6 pins x 4 bytes: u16 BE voltage mV, u16 BE current mA |
-| Pin order | reversed: bytes 0-3 are pin 6, bytes 20-23 are pin 1 |
+- **Background service.** Starts at boot, needs no user logged on, restarts on failure.
+- **Rules with hold times.** Per-pin over-current, load-relative imbalance, open
+  pin, voltage spread between pins, and sensor loss.
+- **Graduated response.** Desktop warning, then GPU throttle, then forced shutdown
+  if the fault survives throttling or comes back. Severe faults shut down at once.
+- **Dry run.** Logs and announces what it would do without acting. This is the default.
+- **Tray dashboard.** Live per-pin levels, power gauge, five-minute graph, GPU
+  temperature, load, VRAM and fan.
+- **Health trend.** Tracks each pin's share of the load and its supply-path
+  resistance across days, and flags drift long before a limit trips.
+- **Self-tests.** A test alert and a 20-second real throttle test, both from the tray.
+- **Evidence.** Daily CSV logs, and an incident file with the last two minutes of
+  samples whenever it throttles or shuts down.
 
-The protocol is reverse-engineered by the community, not documented by ASUS.
-It must be confirmed on this card before anything depends on it. Reads only:
-writing to the wrong device on a GPU I2C bus can damage hardware, so the write
-call is never bound.
+## Supported hardware
 
-ASUS's own handling (GPU Tweak III Power Detector+) warns when a pin reads 0 A
-or goes above ~9.2 A, and the card blinks its red power LED. It only warns. It
-needs GPU Tweak III running, takes no action, and has no shutdown.
+| Card | PCI subsystem | Status |
+|---|---|---|
+| ROG Astral RTX 5090 OC | `1043:89E3` | Developed and verified on this card |
+| ROG Astral RTX 5090D OC, 5090 LC, 5090 OC White, ROG Matrix 5090 | `1043:89EA`, `89EC`, `8A2E`, `8A61` | Recognised, untested |
+| ROG Astral RTX 5080, 5080 OC, 5080 OC White | `1043:89DF`, `89DE`, `8A2B` | Recognised, untested |
 
-## Prior art
+Other cards have no per-pin sensor and cannot be supported. Windows 10 or 11,
+the NVIDIA driver and the .NET 10 runtime are required. The acrylic dashboard
+backdrop needs Windows 11.
 
-| Project | Platform | What it does | Gap |
-|---|---|---|---|
-| [12vhpwr-guard](https://github.com/humza-khalid/12vhpwr-guard) | Windows, Python, MIT | Direct I2C read, tiered overcurrent response (9.5 A/15 s, 13 A/3 s, 16 A/1 s), GPU throttle then forced shutdown, flight recorder | Absolute thresholds only. Runs as a logon task, not a service |
-| [GPUPinMonitor](https://github.com/xsmphr/GPUPinMonitor) | Windows, C#, MIT | Desktop widget via ASUS `ExpanModule.dll` | Display only, needs GPU Tweak III |
-| [astral-hwmon](https://github.com/ksokolowski/astral-hwmon) | Linux kernel driver | hwmon sensors plus `astral-guard` checks (imbalance, zero pin, voltage sag) | Linux only, reports rather than protects by default |
-| [astral-power-monitor](https://github.com/EthDevOps/astral-power-monitor) | Linux | Per-pin service | Linux only |
+## Install
 
-Overcurrent shutdown on Windows already exists. Simply installing
-12vhpwr-guard gets most of the headline feature today. PinSentinel is worth
-building for what it does not cover, listed below.
+From an elevated PowerShell in the repository folder (needs the .NET 10 SDK):
 
-## Where protection can be improved
+```
+.\scripts\install.ps1
+```
 
-1. **Load-relative imbalance detection.** An absolute 9.5 A limit says nothing
-   at partial load. At 300 W a healthy pin carries ~4.2 A; one pin at 8 A with
-   the rest near 3.4 A is a failing contact, and no absolute threshold fires.
-   Compare each pin to the mean of the six and alert on deviation, gated on a
-   minimum total current so idle noise does not trigger it.
-2. **Open-pin detection.** A pin near 0 A while the others carry load means a
-   contact has gone open and five pins are doing the work of six.
-3. **Use the per-pin voltage.** Spread between pin voltages under load reflects
-   differences in cable and contact resistance. Sag against idle voltage
-   reflects the whole path. Both rise as a connector degrades.
-4. **Baseline and drift.** Record each pin's share of total current per load
-   band and alert when it drifts over days or weeks. Connector damage is
-   usually progressive, and this gives warning long before a threshold trips.
-5. **Graduated response.** Toast and sound, then cut GPU power limit and clocks,
-   then forced shutdown if the fault persists. Dropping GPU load removes the
-   hazard within a second, so shutdown is the backstop rather than the first
-   move. Short hot-path thresholds for severe faults (e.g. 16 A) skip straight
-   to shutdown.
-6. **Run as a Windows service.** Starts at boot before logon, runs as SYSTEM so
-   it can always throttle and shut down, restarts on crash, and does not die
-   with a user session.
-7. **Fail safe on sensor loss.** If reads fail or return garbage for several
-   polls while the GPU is under load, treat it as a fault and warn rather than
-   silently reporting nothing.
-8. **Evidence.** Rolling per-pin log and a pre-event flight recorder, written to
-   disk before shutdown, plus Windows Event Log entries. Useful for diagnosing
-   a cable and for an RMA.
+This publishes to `C:\Program Files\PinSentinel`, installs and starts the
+service, and adds a Start menu shortcut for the tray app. Start PinSentinel from
+the Start menu and tick **Start with Windows** in its right-click menu.
+
+The guard starts in dry run. See the [manual](docs/MANUAL.md#arming) before arming it.
+
+To remove it: `.\scripts\install.ps1 -Uninstall`. Logs in `%ProgramData%\PinSentinel` are kept.
 
 ## Default thresholds
 
 | Condition | Warn | Throttle | Shutdown |
 |---|---|---|---|
 | Any pin current | >= 9.0 A for 10 s | >= 9.5 A for 10 s | >= 13 A for 3 s, or >= 16 A for 1 s |
-| Pin deviation from mean (total >= 15 A) | > 20 % for 30 s | > 35 % for 15 s | > 50 % for 30 s |
+| Pin deviation from the six-pin mean (total >= 15 A) | > 20 % for 30 s | > 35 % for 15 s | > 50 % for 30 s |
 | Pin < 0.5 A while total >= 15 A | 5 s | 15 s | 45 s |
-| Pin voltage spread under load | > 150 mV for 30 s | > 250 mV for 15 s | n/a |
+| Voltage spread between pins under load | > 150 mV for 30 s | > 250 mV for 15 s | n/a |
 | Sensor unreadable | 5 reads | n/a | n/a |
 
-Independently of the table, a throttle-level fault that is still present 10 s
-after throttling, or that returns within 10 minutes of the throttle being
-released, forces a shutdown. The throttle is held for at least 2 minutes.
+A throttle-level fault still present 10 s after throttling, or returning within
+10 minutes of the throttle being released, also forces a shutdown. Everything is
+configurable; see the [manual](docs/MANUAL.md#configuration).
 
-All of this is in `appsettings.json`. The imbalance and voltage numbers are
-estimates. Log a week or two of baseline on this card before turning `DryRun` off.
+## Repository layout
 
-## Limits of a software guard
+| Path | Contents |
+|---|---|
+| `src/PinSentinel.Core` | Sensor read, frame parser, rule engine, guard state machine, CSV log, health analysis |
+| `src/PinSentinel.Service` | Windows service: notifications, throttle, shutdown, status and control pipes |
+| `src/PinSentinel.Tray` | Tray icon and dashboard (WPF) |
+| `src/PinSentinel.Cli` | `probe` and `watch` for checking the sensor by hand |
+| `tests/PinSentinel.Tests` | xUnit tests for the parser, rules, guard and health analysis |
+| `scripts` | Installer and icon generator |
+| `docs` | Manual, design notes, screenshots |
+
+## Development
+
+```
+dotnet build
+dotnet test
+dotnet run --project src/PinSentinel.Cli -- probe          # one raw and parsed sensor frame
+dotnet run --project src/PinSentinel.Cli -- watch          # live readings, warnings only
+dotnet run --project src/PinSentinel.Tray -- --demo        # dashboard on synthetic data
+dotnet run --project src/PinSentinel.Tray -- --demo fault  # same, with a simulated bad pin
+```
+
+The rule engine and guard take time from the samples and have no hardware
+dependencies, so they are tested with synthetic traces.
+
+## Limits
 
 - It sees only the six +12 V pins at the card. Not the ground pins, not the
-  PSU-side plug, and no temperatures. der8auer's 150 °C reading was at the PSU end.
-- Polling is ~2-5 Hz. It catches sustained faults, not transients.
-- It depends on Windows and the NVIDIA driver being alive. A hung system is
-  unprotected.
-- Possible I2C contention if GPU Tweak III or HWiNFO poll the same chip at the
-  same time. To be tested.
-- BTF variants powered through the GC-HPWR slot bypass the shunts. Not relevant
-  to this card.
+  PSU-side plug, and no connector temperature.
+- It samples at 2 Hz. It catches sustained faults, not sub-second transients.
+- It depends on Windows and the NVIDIA driver running. A hung system is unprotected.
+- The sensor protocol is reverse-engineered by the community, not documented by ASUS.
+- BTF cards powered through the GC-HPWR slot bypass the shunts.
 
-Physical measures that complement it: a native ATX 3.1 12V-2x6 PSU cable
-rather than an adapter, fully seated with no bend close to the plug, few
-re-plugs (the connector is rated for about 30 mating cycles), and a modest
-power limit. A hardware in-line monitor such as Thermal Grizzly WireView Pro II
-covers the cases software cannot.
-
-## Layout
-
-- `src/PinSentinel.Core`: NVAPI sensor read, frame parser, rule engine, guard
-  state machine, CSV log. The rule engine and guard take time from the samples
-  and have no hardware dependencies, so they are unit tested with synthetic traces.
-- `src/PinSentinel.Service`: Windows service host. Notifies the logged-on
-  desktop, throttles with `nvidia-smi` (minimum power limit plus a clock lock),
-  shuts down with `shutdown.exe`, writes logs and incident records to
-  `%ProgramData%\PinSentinel`.
-- `src/PinSentinel.Tray`: notification-area icon and dashboard (WPF). The Live tab
-  reads the service's status stream from the `PinSentinel.Status` named pipe and adds
-  GPU telemetry from NVML. The Health tab analyses the daily CSV logs for drift in
-  each pin's share of the load and its path resistance. The footer arms or disarms
-  the guard and sends a test alert over the `PinSentinel.Control` pipe.
-  `--demo [fault]` runs it on synthetic data.
-- `src/PinSentinel.Cli`: `probe` and `watch` for checking the sensor by hand.
-- `tests/PinSentinel.Tests`: xUnit tests.
-
-Requires the .NET 10 SDK and the NVIDIA driver.
-
-## Usage
-
-```
-dotnet test
-dotnet run --project src/PinSentinel.Cli -- probe
-dotnet run --project src/PinSentinel.Cli -- watch --log .\logs
-dotnet run --project src/PinSentinel.Service        # guard in a console, dry run
-.\scripts\install.ps1                               # elevated: install as a service
-.\scripts\install.ps1 -Uninstall
-```
-
-Arming from the tray is stored in `%ProgramData%\PinSentinel\state.json` and overrides
-`DryRun` in `appsettings.json`.
-
-The service ships with `DryRun: true`. In that mode it logs, notifies and writes
-incident records for what it would have done, but never throttles or shuts down.
+A native ATX 3.1 12V-2x6 cable, careful seating, few re-plugs and a modest power
+limit still matter. A hardware in-line monitor covers what software cannot.
 
 ## Status
 
-Verified on the ROG Astral RTX 5090 OC (`1043:89E3`):
+Version 1.0.0. Verified on a ROG Astral RTX 5090 OC: sensor reading as a
+service, readings against GPU Tweak III, desktop alerts, the real throttle
+(592 W to 108 W and back), and a 68-minute load baseline. The forced shutdown
+has only run in dry run. Details are in the [design notes](docs/DESIGN.md#verification-record).
 
-- Sensor read as a service in session 0, and readings against GPU Tweak III at ~550 W.
-- Parsing, CSV logging, the status and control pipes, and the tray app against the installed service.
-- Desktop notification from the service (test alert).
-- The warn / throttle / shutdown path in dry run.
-- The real throttle: 592 W fell to 108 W within the 20 s test and recovered to 577 W on release.
-- Baseline over 68 min of load: imbalance 4-5 %, highest pin 8.68 A at ~600 W, voltage spread 16-32 mV.
+## Prior art
 
-Not yet verified:
-
-- The real shutdown (`shutdown.exe /s /f`).
-- Health drift thresholds (1.0 point of share, 30 % path resistance) are starting guesses.
-
-![Live tab on demo data](docs/dashboard-live-demo.png)
-![Health tab on demo data with simulated drift](docs/dashboard-health-demo.png)
-
-Both screenshots are the demo feed, not real readings.
+- [12vhpwr-guard](https://github.com/humza-khalid/12vhpwr-guard): Windows over-current watchdog for the same cards
+- [astral-hwmon](https://github.com/ksokolowski/astral-hwmon): Linux hwmon driver and guard
+- [GPUPinMonitor](https://github.com/xsmphr/GPUPinMonitor): Windows desktop widget
+- [astral-power-monitor](https://github.com/EthDevOps/astral-power-monitor): Linux service
 
 ## Sources
 
-- [ASUS: How Power Detector+ alerts you to abnormal current](https://rog.asus.com/articles/guides/how-gpu-tweaks-power-detector-alerts-you-to-abnormal-current-on-your-rog-astral-graphics-card/)
+- [ASUS: how Power Detector+ alerts you to abnormal current](https://rog.asus.com/articles/guides/how-gpu-tweaks-power-detector-alerts-you-to-abnormal-current-on-your-rog-astral-graphics-card/)
 - [LACT issue 906: Astral per-pin monitoring via I2C](https://github.com/ilya-zlobintsev/LACT/issues/906)
 - [Igor's Lab: 12VHPWR plug reaches 150 °C on the PSU side](https://www.igorslab.de/en/12vhpwr-plug-reaches-150c-on-the-psu-side-when-connected-to-the-geforce-rtx-5090-design-problem-instead-of-user-error/)
-- [Igor's Lab: 12V-2x6 connector](https://www.igorslab.de/en/rest-in-peace-12vhpwr-connector-welcome-12v-2x6-connector/)
-- [Guru3D: open-source 12VHPWR Guard](https://www.guru3d.com/story/opensource-12vhpwr-guard-can-shut-down-asus-rtx-5090-systems-before-sustained-connector-overcurrent/)
+- [Igor's Lab: the 12V-2x6 connector](https://www.igorslab.de/en/rest-in-peace-12vhpwr-connector-welcome-12v-2x6-connector/)
+
+## License
+
+No license has been chosen yet, so all rights are reserved by default.
+
+## Disclaimer
+
+PinSentinel reduces risk; it does not remove it. It is not a substitute for a
+correctly seated, undamaged cable, and it comes with no warranty.
