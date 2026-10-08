@@ -13,6 +13,7 @@ static class Program
 {
     // --demo [fault]            synthetic data instead of the service
     // --show                    open the dashboard at startup
+    // --icon <file.png>         render the tray icon states to a PNG and exit
     // --screenshot <file.png>   render the demo dashboard to a PNG and exit (add 'health' for that tab)
     [STAThread]
     static int Main(string[] args)
@@ -20,6 +21,22 @@ static class Program
         bool fault = args.Contains("fault");
         int shot = Array.IndexOf(args, "--screenshot");
         var model = new DashboardModel();
+
+        int icon = Array.IndexOf(args, "--icon");
+        if (icon >= 0 && icon + 1 < args.Length)
+        {
+            // Tray icon states side by side: idle, gaming load, warning, fault, offline.
+            using var sheet = new System.Drawing.Bitmap(5 * 40, 32);
+            using var g = System.Drawing.Graphics.FromImage(sheet);
+            (int[] Heights, int Level)[] states = [([10, 10, 10, 10, 10, 10], 0), ([18, 19, 19, 20, 19, 19], 0), ([20, 21, 22, 21, 21, 21], 1), ([20, 15, 22, 21, 21, 21], 2), ([4, 4, 4, 4, 4, 4], -1)];
+            for (int i = 0; i < states.Length; i++)
+            {
+                using var state = TrayIcon.Draw(states[i].Heights, states[i].Level);
+                g.DrawImage(state, i * 40, 0);
+            }
+            sheet.Save(args[icon + 1]);
+            return 0;
+        }
 
         if (shot >= 0 && shot + 1 < args.Length)
         {

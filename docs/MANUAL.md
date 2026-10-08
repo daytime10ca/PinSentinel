@@ -81,13 +81,14 @@ methods can be mixed. Only the installer adds the installed-apps entry.
 
 ## The tray icon
 
-The icon shows six bars, one per pin, whose heights follow the live current.
+The icon is a solid tile in the status colour with six dark bars, one per pin,
+whose heights follow the live current.
 
-| Icon | Meaning |
+| Tile colour | Meaning |
 |---|---|
-| Teal bars | All pins healthy |
-| Amber bar or bars | A pin at or above 9.0 A, or a warning is active |
-| Red bar or bars | A pin at or above 9.5 A, or a throttle or shutdown fault is active |
+| Teal | All pins healthy |
+| Amber | A pin at or above 9.0 A, or a warning is active |
+| Red | A pin at or above 9.5 A, or a throttle or shutdown fault is active |
 | Grey | The service is not running or the sensor cannot be read |
 
 Hover for connector power and the highest pin. A Windows notification appears

@@ -45,14 +45,18 @@ sealed class TrayIcon : IDisposable
         bool live = _model.HasPins;
         var severity = live ? status!.Severity : Severity.Ok;
 
+        // Square-root scale, so idle currents still show as visible bars.
         // Redraw only when the picture would change; each redraw allocates a GDI icon.
-        int[] heights = live ? [.. status!.Amps.Select(a => (int)Math.Round(Math.Clamp(a / 10, 0, 1) * 26))] : [0, 0, 0, 0, 0, 0];
-        int[] levels = live ? [.. status!.Amps.Select(a => a >= Theme.PinLimitAmps ? 2 : a >= Theme.PinWarnAmps ? 1 : 0)] : [0, 0, 0, 0, 0, 0];
-        string key = $"{_model.Connected}{live}{severity}{string.Join(',', heights)}{string.Join(',', levels)}";
+        int[] heights = live ? [.. status!.Amps.Select(a => 4 + (int)Math.Round(Math.Sqrt(Math.Clamp(a / 10, 0, 1)) * 18))] : [4, 4, 4, 4, 4, 4];
+        double hottest = live ? status!.Amps.Max() : 0;
+        int level = !live ? -1
+            : severity >= Severity.Throttle || hottest >= Theme.PinLimitAmps ? 2
+            : severity == Severity.Warn || hottest >= Theme.PinWarnAmps ? 1 : 0;
+        string key = $"{level}:{string.Join(',', heights)}";
         if (key != _iconKey)
         {
             _iconKey = key;
-            SetIcon(Draw(heights, levels, live, severity));
+            SetIcon(Draw(heights, level));
         }
 
         string text = !_model.Connected ? "PinSentinel: service not running"
@@ -69,27 +73,32 @@ sealed class TrayIcon : IDisposable
         _lastSeverity = severity;
     }
 
-    private static Drawing.Bitmap Draw(int[] heights, int[] levels, bool live, Severity severity)
+    /// <summary>
+    /// A solid tile in the status colour with the six pin bars cut out in dark. The filled tile
+    /// stays visible on any taskbar and gives the whole icon cell something to click.
+    /// </summary>
+    internal static Drawing.Bitmap Draw(int[] heights, int level)
     {
         var bitmap = new Drawing.Bitmap(32, 32);
         using var g = Drawing.Graphics.FromImage(bitmap);
+        g.SmoothingMode = Drawing.Drawing2D.SmoothingMode.AntiAlias;
         g.Clear(Drawing.Color.Transparent);
 
-        var ok = Drawing.ColorTranslator.FromHtml("#5EEAD4");
-        var warn = Drawing.ColorTranslator.FromHtml("#FBBF24");
-        var bad = Drawing.ColorTranslator.FromHtml("#F87171");
-        var offline = Drawing.ColorTranslator.FromHtml("#6B7280");
-        var overall = severity switch { Severity.Ok => ok, Severity.Warn => warn, _ => bad };
+        var color = Drawing.ColorTranslator.FromHtml(level switch { 0 => "#5EEAD4", 1 => "#FBBF24", 2 => "#F87171", _ => "#9CA3AF" });
+        using var tile = new Drawing.Drawing2D.GraphicsPath();
+        const int d = 12;
+        tile.AddArc(0, 0, d, d, 180, 90);
+        tile.AddArc(31 - d, 0, d, d, 270, 90);
+        tile.AddArc(31 - d, 31 - d, d, d, 0, 90);
+        tile.AddArc(0, 31 - d, d, d, 90, 90);
+        tile.CloseFigure();
+        using var fill = new Drawing.SolidBrush(color);
+        g.FillPath(fill, tile);
 
+        g.SmoothingMode = Drawing.Drawing2D.SmoothingMode.None;
+        using var bars = new Drawing.SolidBrush(Drawing.ColorTranslator.FromHtml("#0E1014"));
         for (int i = 0; i < 6; i++)
-        {
-            int height = Math.Max(3, heights[i]);
-            var color = !live ? offline : levels[i] == 2 ? bad : levels[i] == 1 ? warn : overall;
-            using var brush = new Drawing.SolidBrush(color);
-            g.FillRectangle(brush, 1 + i * 5, 29 - height, 4, height);
-        }
-        using var baseline = new Drawing.SolidBrush(live ? overall : offline);
-        g.FillRectangle(baseline, 1, 30, 29, 2);
+            g.FillRectangle(bars, 5 + i * 4, 27 - heights[i], 3, heights[i]);
         return bitmap;
     }
 
